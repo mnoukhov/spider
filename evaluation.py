@@ -379,7 +379,7 @@ class Evaluator:
         partial_scores = self.eval_partial_match(pred, label)
         self.partial_scores = partial_scores
 
-        for _, score in partial_scores.items():
+        for _, score in list(partial_scores.items()):
             if score['f1'] != 1:
                 return 0
         if len(label['from']['table_units']) > 0:
@@ -445,36 +445,36 @@ def print_scores(scores, etype):
     partial_types = ['select', 'select(no AGG)', 'where', 'where(no OP)', 'group(no Having)',
                      'group', 'order', 'and/or', 'IUEN', 'keywords']
 
-    print "{:20} {:20} {:20} {:20} {:20} {:20}".format("", *levels)
+    print("{:20} {:20} {:20} {:20} {:20} {:20}".format("", *levels))
     counts = [scores[level]['count'] for level in levels]
-    print "{:20} {:<20d} {:<20d} {:<20d} {:<20d} {:<20d}".format("count", *counts)
+    print("{:20} {:<20d} {:<20d} {:<20d} {:<20d} {:<20d}".format("count", *counts))
 
     if etype in ["all", "exec"]:
-        print '=====================   EXECUTION ACCURACY     ====================='
+        print('=====================   EXECUTION ACCURACY     =====================')
         this_scores = [scores[level]['exec'] for level in levels]
-        print "{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format("execution", *this_scores)
+        print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format("execution", *this_scores))
 
     if etype in ["all", "match"]:
-        print '\n====================== EXACT MATCHING ACCURACY ====================='
+        print('\n====================== EXACT MATCHING ACCURACY =====================')
         exact_scores = [scores[level]['exact'] for level in levels]
-        print "{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format("exact match", *exact_scores)
-        print '\n---------------------PARTIAL MATCHING ACCURACY----------------------'
+        print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format("exact match", *exact_scores))
+        print('\n---------------------PARTIAL MATCHING ACCURACY----------------------')
         for type_ in partial_types:
             this_scores = [scores[level]['partial'][type_]['acc'] for level in levels]
-            print "{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores)
+            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores))
 
-        print '---------------------- PARTIAL MATCHING RECALL ----------------------'
+        print('---------------------- PARTIAL MATCHING RECALL ----------------------')
         for type_ in partial_types:
             this_scores = [scores[level]['partial'][type_]['rec'] for level in levels]
-            print "{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores)
+            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores))
 
-        print '---------------------- PARTIAL MATCHING F1 --------------------------'
+        print('---------------------- PARTIAL MATCHING F1 --------------------------')
         for type_ in partial_types:
             this_scores = [scores[level]['partial'][type_]['f1'] for level in levels]
-            print "{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores)
+            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores))
 
 
-def evaluate(gold, predict, db_dir, etype, kmaps):
+def evaluate(gold, predict, db_dir, etype, kmaps, topk=1):
     with open(gold) as f:
         glist = [l.strip().split('\t') for l in f.readlines() if len(l.strip()) > 0]
 
@@ -496,8 +496,17 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
         for type_ in partial_types:
             scores[level]['partial'][type_] = {'acc': 0., 'rec': 0., 'f1': 0.,'acc_count':0,'rec_count':0}
 
+
+    if not len(plist) == len(glist):
+        raise Exception('gold and prediction files have different length')
+    elif len(plist) % topk != 0:
+        raise Exception('gold and prediction files must have topk lines per example')
+
+    num_examples = len(plist) // topk
     eval_err_num = 0
-    for p, g in zip(plist, glist):
+    for i in range(num_examples):
+        p = plist[i]
+        g = glist[i]
         p_str = p[0]
         g_str, db = g
         db_name = db
@@ -531,7 +540,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
             "where": []
             }
             eval_err_num += 1
-            print("eval_err_num:{}".format(eval_err_num))
+            print(("eval_err_num:{}".format(eval_err_num)))
 
         # rebuild sql for value evaluation
         kmap = kmaps[db_name]
@@ -551,8 +560,8 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
             exact_score = evaluator.eval_exact_match(p_sql, g_sql)
             partial_scores = evaluator.partial_scores
             if exact_score == 0:
-                print("{} pred: {}".format(hardness,p_str))
-                print("{} gold: {}".format(hardness,g_str))
+                print(("{} pred: {}".format(hardness,p_str)))
+                print(("{} gold: {}".format(hardness,g_str)))
                 print("")
             scores[hardness]['exact'] += exact_score
             scores['all']['exact'] += exact_score
@@ -686,7 +695,7 @@ def build_valid_col_units(table_units, schema):
     col_ids = [table_unit[1] for table_unit in table_units if table_unit[0] == TABLE_TYPE['table_unit']]
     prefixs = [col_id[:-2] for col_id in col_ids]
     valid_col_units= []
-    for value in schema.idMap.values():
+    for value in list(schema.idMap.values()):
         if '.' in value and value[:value.index('.')] in prefixs:
             valid_col_units.append(value)
     return valid_col_units
@@ -851,6 +860,7 @@ if __name__ == "__main__":
     parser.add_argument('--db', dest='db', type=str)
     parser.add_argument('--table', dest='table', type=str)
     parser.add_argument('--etype', dest='etype', type=str)
+    parser.add_argument('--topk', type=int, default=1, help='take max score over topk predictions')
     args = parser.parse_args()
 
     gold = args.gold
@@ -863,4 +873,4 @@ if __name__ == "__main__":
 
     kmaps = build_foreign_key_map_from_json(table)
 
-    evaluate(gold, pred, db_dir, etype, kmaps)
+    evaluate(gold, pred, db_dir, etype, kmaps, topk)
