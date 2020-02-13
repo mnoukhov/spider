@@ -24,6 +24,8 @@ import json
 import sqlite3
 import traceback
 import argparse
+from itertools import groupby
+from operator import itemgetter
 
 from process_sql import tokenize, get_schema, get_tables_with_alias, Schema, get_sql
 
@@ -474,9 +476,29 @@ def print_scores(scores, etype, file=sys.stdout):
             print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores), file=file)
 
 
-def evaluate(gold, predict, db_dir, etype, kmaps, topk=1, savepath=None):
+def evaluate(gold, predict, db_dir, etype, kmaps, savepath=None):
     with open(gold) as f:
-        glist = [l.strip().split('\t') for l in f.readlines() if len(l.strip()) > 0]
+        glist = []
+        dblist = []
+        qlist = []
+        for i,line in enumerate(f):
+            vals = line.strip().split('\t')
+            if len(vals) == 1:
+                # empty row
+                continue
+            elif len(vals) == 2:
+                # og format
+                gold, db = vals
+                glist.append(gold)
+                dblist.append(db)
+                qlist.append(i)
+            elif len(vals) == 3:
+                # IRNet format
+                gold, db, ques = vals
+                glist.append(gold)
+                dblist.append(db)
+                qlist.append(ques)
+
 
     with open(predict) as f:
         plist = [l.strip().split('\t') for l in f.readlines() if len(l.strip()) > 0]
@@ -499,16 +521,14 @@ def evaluate(gold, predict, db_dir, etype, kmaps, topk=1, savepath=None):
 
     if not len(plist) == len(glist):
         raise Exception('gold and prediction files have different length')
-    elif len(plist) % topk != 0:
-        raise Exception('gold and prediction files must have topk lines per example')
 
-    num_examples = len(plist) // topk
     eval_err_num = 0
-    for i in range(num_examples):
-        p = plist[i]
-        g = glist[i]
-        p_str = p[0]
-        g_str, db = g
+
+    # group all with same question, gold, db
+    # this automatically catches top k
+    for key, topk_group in groupby(zip(qlist, glist, dblist, plist),
+                                   key=itemgetter(0,1,2)):
+        _, g_str, db = key
         db_name = db
         db = os.path.join(db_dir, db, db + ".sqlite")
         schema = Schema(get_schema(db))
@@ -517,76 +537,99 @@ def evaluate(gold, predict, db_dir, etype, kmaps, topk=1, savepath=None):
         scores[hardness]['count'] += 1
         scores['all']['count'] += 1
 
-        try:
-            p_sql = get_sql(schema, p_str)
-        except:
-            # If p_sql is not valid, then we will use an empty sql to evaluate with the correct sql
-            p_sql = {
-            "except": None,
-            "from": {
-                "conds": [],
-                "table_units": []
-            },
-            "groupBy": [],
-            "having": [],
-            "intersect": None,
-            "limit": None,
-            "orderBy": [],
-            "select": [
-                False,
-                []
-            ],
-            "union": None,
-            "where": []
-            }
-            eval_err_num += 1
-            print(("eval_err_num:{}".format(eval_err_num)))
-
-        # rebuild sql for value evaluation
         kmap = kmaps[db_name]
         g_valid_col_units = build_valid_col_units(g_sql['from']['table_units'], schema)
         g_sql = rebuild_sql_val(g_sql)
         g_sql = rebuild_sql_col(g_valid_col_units, g_sql, kmap)
-        p_valid_col_units = build_valid_col_units(p_sql['from']['table_units'], schema)
-        p_sql = rebuild_sql_val(p_sql)
-        p_sql = rebuild_sql_col(p_valid_col_units, p_sql, kmap)
 
-        if etype in ["all", "exec"]:
-            exec_score = eval_exec_match(db, p_str, g_str, p_sql, g_sql)
-            if exec_score:
-                scores[hardness]['exec'] += 1
+        exec_scores = []
+        exact_scores = []
+        partial_scores = []
+        ps = []
+        for _, _, _, p in topk_group:
+            p_str = p[0]
+            ps.append(p_str)
+
+            try:
+                p_sql = get_sql(schema, p_str)
+            except:
+                # If p_sql is not valid, then we will use an empty sql to evaluate with the correct sql
+                p_sql = {
+                "except": None,
+                "from": {
+                    "conds": [],
+                    "table_units": []
+                },
+                "groupBy": [],
+                "having": [],
+                "intersect": None,
+                "limit": None,
+                "orderBy": [],
+                "select": [
+                    False,
+                    []
+                ],
+                "union": None,
+                "where": []
+                }
+                eval_err_num += 1
+                print(("eval_err_num:{}".format(eval_err_num)))
+
+            # rebuild sql for value evaluation
+            p_valid_col_units = build_valid_col_units(p_sql['from']['table_units'], schema)
+            p_sql = rebuild_sql_val(p_sql)
+            p_sql = rebuild_sql_col(p_valid_col_units, p_sql, kmap)
+
+            if etype in ["all", "exec"]:
+                exec_score = eval_exec_match(db, p_str, g_str, p_sql, g_sql)
+                exec_scores.append(exec_score)
+
+            if etype in ["all", "match"]:
+                exact_scores.append(evaluator.eval_exact_match(p_sql, g_sql))
+                partial_scores.append(evaluator.partial_scores)
+
+        if etype in ["all", "exec"] and any(exec_scores):
+            scores[hardness]['exec'] += 1
 
         if etype in ["all", "match"]:
-            exact_score = evaluator.eval_exact_match(p_sql, g_sql)
-            partial_scores = evaluator.partial_scores
-            if exact_score == 0:
+            max_exact_score = max(exact_scores)
+
+            scores[hardness]['exact'] += max_exact_score
+            scores['all']['exact'] += max_exact_score
+
+            index = exact_scores.index(max_exact_score)
+            p_str = ps[index]
+
+            if max_exact_score == 0:
                 print(("{} pred: {}".format(hardness,p_str)))
                 print(("{} gold: {}".format(hardness,g_str)))
                 print("")
-            scores[hardness]['exact'] += exact_score
-            scores['all']['exact'] += exact_score
+
+            # no exact match, just go with the first in the list
+            # TODO: change to best F1 or something?
+            partial_score = partial_scores[index]
             for type_ in partial_types:
-                if partial_scores[type_]['pred_total'] > 0:
-                    scores[hardness]['partial'][type_]['acc'] += partial_scores[type_]['acc']
+                if partial_score[type_]['pred_total'] > 0:
+                    scores[hardness]['partial'][type_]['acc'] += partial_score[type_]['acc']
                     scores[hardness]['partial'][type_]['acc_count'] += 1
-                if partial_scores[type_]['label_total'] > 0:
-                    scores[hardness]['partial'][type_]['rec'] += partial_scores[type_]['rec']
+                if partial_score[type_]['label_total'] > 0:
+                    scores[hardness]['partial'][type_]['rec'] += partial_score[type_]['rec']
                     scores[hardness]['partial'][type_]['rec_count'] += 1
-                scores[hardness]['partial'][type_]['f1'] += partial_scores[type_]['f1']
-                if partial_scores[type_]['pred_total'] > 0:
-                    scores['all']['partial'][type_]['acc'] += partial_scores[type_]['acc']
+                scores[hardness]['partial'][type_]['f1'] += partial_score[type_]['f1']
+                if partial_score[type_]['pred_total'] > 0:
+                    scores['all']['partial'][type_]['acc'] += partial_score[type_]['acc']
                     scores['all']['partial'][type_]['acc_count'] += 1
-                if partial_scores[type_]['label_total'] > 0:
-                    scores['all']['partial'][type_]['rec'] += partial_scores[type_]['rec']
+                if partial_score[type_]['label_total'] > 0:
+                    scores['all']['partial'][type_]['rec'] += partial_score[type_]['rec']
                     scores['all']['partial'][type_]['rec_count'] += 1
-                scores['all']['partial'][type_]['f1'] += partial_scores[type_]['f1']
+                scores['all']['partial'][type_]['f1'] += partial_score[type_]['f1']
 
             entries.append({
                 'predictSQL': p_str,
                 'goldSQL': g_str,
                 'hardness': hardness,
-                'exact': exact_score,
-                'partial': partial_scores
+                'exact': max_exact_score,
+                'partial': partial_score
             })
 
     for level in levels:
@@ -864,11 +907,10 @@ if __name__ == "__main__":
     parser.add_argument('--db', required=True)
     parser.add_argument('--table', required=True)
     parser.add_argument('--etype', choices=["all", "exec", "match"], default='match')
-    parser.add_argument('--topk', type=int, default=1, help='take max score over topk predictions')
     parser.add_argument('--savepath', help='directory to save output to')
 
     args = parser.parse_args()
 
     kmaps = build_foreign_key_map_from_json(args.table)
 
-    evaluate(args.gold, args.pred, args.db, args.etype, kmaps, args.topk, args.savepath)
+    evaluate(args.gold, args.pred, args.db, args.etype, kmaps, args.savepath)
