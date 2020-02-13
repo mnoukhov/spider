@@ -440,41 +440,41 @@ def isValidSQL(sql, db):
     return True
 
 
-def print_scores(scores, etype):
+def print_scores(scores, etype, file=sys.stdout):
     levels = ['easy', 'medium', 'hard', 'extra', 'all']
     partial_types = ['select', 'select(no AGG)', 'where', 'where(no OP)', 'group(no Having)',
                      'group', 'order', 'and/or', 'IUEN', 'keywords']
 
-    print("{:20} {:20} {:20} {:20} {:20} {:20}".format("", *levels))
+    print("{:20} {:20} {:20} {:20} {:20} {:20}".format("", *levels), file=file)
     counts = [scores[level]['count'] for level in levels]
-    print("{:20} {:<20d} {:<20d} {:<20d} {:<20d} {:<20d}".format("count", *counts))
+    print("{:20} {:<20d} {:<20d} {:<20d} {:<20d} {:<20d}".format("count", *counts), file=file)
 
     if etype in ["all", "exec"]:
-        print('=====================   EXECUTION ACCURACY     =====================')
+        print('=====================   EXECUTION ACCURACY     =====================', file=file)
         this_scores = [scores[level]['exec'] for level in levels]
-        print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format("execution", *this_scores))
+        print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format("execution", *this_scores), file=file)
 
     if etype in ["all", "match"]:
-        print('\n====================== EXACT MATCHING ACCURACY =====================')
+        print('\n====================== EXACT MATCHING ACCURACY =====================', file=file)
         exact_scores = [scores[level]['exact'] for level in levels]
-        print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format("exact match", *exact_scores))
-        print('\n---------------------PARTIAL MATCHING ACCURACY----------------------')
+        print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format("exact match", *exact_scores), file=file)
+        print('\n---------------------PARTIAL MATCHING ACCURACY----------------------', file=file)
         for type_ in partial_types:
             this_scores = [scores[level]['partial'][type_]['acc'] for level in levels]
-            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores))
+            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores), file=file)
 
-        print('---------------------- PARTIAL MATCHING RECALL ----------------------')
+        print('---------------------- PARTIAL MATCHING RECALL ----------------------', file=file)
         for type_ in partial_types:
             this_scores = [scores[level]['partial'][type_]['rec'] for level in levels]
-            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores))
+            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores), file=file)
 
-        print('---------------------- PARTIAL MATCHING F1 --------------------------')
+        print('---------------------- PARTIAL MATCHING F1 --------------------------', file=file)
         for type_ in partial_types:
             this_scores = [scores[level]['partial'][type_]['f1'] for level in levels]
-            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores))
+            print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores), file=file)
 
 
-def evaluate(gold, predict, db_dir, etype, kmaps, topk=1):
+def evaluate(gold, predict, db_dir, etype, kmaps, topk=1, savepath=None):
     with open(gold) as f:
         glist = [l.strip().split('\t') for l in f.readlines() if len(l.strip()) > 0]
 
@@ -616,6 +616,10 @@ def evaluate(gold, predict, db_dir, etype, kmaps, topk=1):
                         scores[level]['partial'][type_]['rec'] + scores[level]['partial'][type_]['acc'])
 
     print_scores(scores, etype)
+
+    if savepath:
+        with open(savepath, 'w') as f:
+            print_scores(scores, etype, f)
 
 
 def eval_exec_match(db, p_str, g_str, pred, gold):
@@ -861,8 +865,10 @@ if __name__ == "__main__":
     parser.add_argument('--table', required=True)
     parser.add_argument('--etype', choices=["all", "exec", "match"], default='match')
     parser.add_argument('--topk', type=int, default=1, help='take max score over topk predictions')
+    parser.add_argument('--savepath', help='directory to save output to')
+
     args = parser.parse_args()
 
     kmaps = build_foreign_key_map_from_json(args.table)
 
-    evaluate(args.gold, args.pred, args.db, args.etype, kmaps, args.topk)
+    evaluate(args.gold, args.pred, args.db, args.etype, kmaps, args.topk, args.savepath)
