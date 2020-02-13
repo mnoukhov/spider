@@ -902,15 +902,19 @@ def build_foreign_key_map_from_json(table):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--gold', required=True)
-    parser.add_argument('--pred', required=True)
-    parser.add_argument('--db', required=True)
-    parser.add_argument('--table', required=True)
+    parser.add_argument('--output-dir', required=True, help='dir with gold, output and where to save eval')
+    parser.add_argument('--data-dir', required=True, help='dir with tables.json, databases')
     parser.add_argument('--etype', choices=["all", "exec", "match"], default='match')
-    parser.add_argument('--savepath', help='directory to save output to')
 
     args = parser.parse_args()
 
-    kmaps = build_foreign_key_map_from_json(args.table)
+    table = f'{args.data_dir}/tables.json'
+    database = f'{args.data_dir}/database/'
 
-    evaluate(args.gold, args.pred, args.db, args.etype, kmaps, args.savepath)
+    gold = f'{args.output_dir}/gold.txt'
+    pred = f'{args.output_dir}/output.txt'
+    savepath = f'{args.output_dir}/spider-eval.txt'
+
+    kmaps = build_foreign_key_map_from_json(table)
+
+    evaluate(gold, pred, db, etype, kmaps, savepath)
