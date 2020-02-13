@@ -855,22 +855,14 @@ def build_foreign_key_map_from_json(table):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--gold', dest='gold', type=str)
-    parser.add_argument('--pred', dest='pred', type=str)
-    parser.add_argument('--db', dest='db', type=str)
-    parser.add_argument('--table', dest='table', type=str)
-    parser.add_argument('--etype', dest='etype', type=str)
+    parser.add_argument('--gold', required=True)
+    parser.add_argument('--pred', required=True)
+    parser.add_argument('--db', required=True)
+    parser.add_argument('--table', required=True)
+    parser.add_argument('--etype', choices=["all", "exec", "match"], default='match')
     parser.add_argument('--topk', type=int, default=1, help='take max score over topk predictions')
     args = parser.parse_args()
 
-    gold = args.gold
-    pred = args.pred
-    db_dir = args.db
-    table = args.table
-    etype = args.etype
+    kmaps = build_foreign_key_map_from_json(args.table)
 
-    assert etype in ["all", "exec", "match"], "Unknown evaluation method"
-
-    kmaps = build_foreign_key_map_from_json(table)
-
-    evaluate(gold, pred, db_dir, etype, kmaps, topk)
+    evaluate(args.gold, args.pred, args.db, args.etype, kmaps, args.topk)
