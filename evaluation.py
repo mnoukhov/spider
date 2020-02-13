@@ -476,7 +476,7 @@ def print_scores(scores, etype, file=sys.stdout):
             print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores), file=file)
 
 
-def evaluate(gold, predict, db_dir, etype, kmaps, savepath=None):
+def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
     with open(gold) as f:
         glist = []
         dblist = []
@@ -510,6 +510,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savepath=None):
     partial_types = ['select', 'select(no AGG)', 'where', 'where(no OP)', 'group(no Having)',
                      'group', 'order', 'and/or', 'IUEN', 'keywords']
     entries = []
+    errors = []
     scores = {}
 
     for level in levels:
@@ -528,7 +529,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savepath=None):
     # this automatically catches top k
     for key, topk_group in groupby(zip(qlist, glist, dblist, plist),
                                    key=itemgetter(0,1,2)):
-        _, g_str, db = key
+        ques, g_str, db = key
         db_name = db
         db = os.path.join(db_dir, db, db + ".sqlite")
         schema = Schema(get_schema(db))
@@ -605,6 +606,14 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savepath=None):
                 print(("{} gold: {}".format(hardness,g_str)))
                 print("")
 
+            errors.append({
+                'match': max_exact_score,
+                'hardness': hardness,
+                'gold': g_str,
+                'preds': ps,
+                'question': ques,
+            })
+
             # no exact match, just go with the first in the list
             # TODO: change to best F1 or something?
             partial_score = partial_scores[index]
@@ -660,9 +669,12 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savepath=None):
 
     print_scores(scores, etype)
 
-    if savepath:
-        with open(savepath, 'w') as f:
+    if savedir:
+        with open(f'{savedir}/spider-eval.txt' , 'w') as f:
             print_scores(scores, etype, f)
+
+        with open(f'{savedir}/spider-errors.json' , 'w') as f:
+            json.dump(errors, f)
 
 
 def eval_exec_match(db, p_str, g_str, pred, gold):
@@ -913,8 +925,8 @@ if __name__ == "__main__":
 
     gold = f'{args.output_dir}/gold.txt'
     pred = f'{args.output_dir}/output.txt'
-    savepath = f'{args.output_dir}/spider-eval.txt'
+    savedir = args.output_dir
 
     kmaps = build_foreign_key_map_from_json(table)
 
-    evaluate(gold, pred, db, etype, kmaps, savepath)
+    evaluate(gold, pred, database, args.etype, kmaps, savedir)
