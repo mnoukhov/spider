@@ -387,7 +387,7 @@ class Evaluator:
         if len(label['from']['table_units']) > 0:
             label_tables = sorted(label['from']['table_units'])
             pred_tables = sorted(pred['from']['table_units'])
-            return label_tables == pred_tables
+            return int(label_tables == pred_tables)
         return 1
 
     def eval_partial_match(self, pred, label):
@@ -607,7 +607,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
                 print("")
 
             errors.append({
-                'match': max_exact_score,
+                'match': bool(max_exact_score),
                 'hardness': hardness,
                 'gold': g_str,
                 'preds': ps,
