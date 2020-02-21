@@ -610,7 +610,8 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
                 'match': bool(max_exact_score),
                 'hardness': hardness,
                 'gold': g_str,
-                'preds': ps,
+                'pred': p_str,
+                'topk': ps,
                 'question': ques,
             })
 
