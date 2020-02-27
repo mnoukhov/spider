@@ -19,6 +19,7 @@
 # }
 ################################
 
+import copy
 import os, sys
 import json
 import sqlite3
@@ -548,11 +549,15 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
         partial_scores = []
         ps = []
         for _, _, _, p in topk_group:
+            g_sql_copy = copy.deepcopy(g_sql)
             p_str = p[0]
             ps.append(p_str)
 
             try:
                 p_sql = get_sql(schema, p_str)
+                p_valid_col_units = build_valid_col_units(p_sql['from']['table_units'], schema)
+                p_sql = rebuild_sql_val(p_sql)
+                p_sql = rebuild_sql_col(p_valid_col_units, p_sql, kmap)
             except:
                 # If p_sql is not valid, then we will use an empty sql to evaluate with the correct sql
                 p_sql = {
@@ -576,17 +581,17 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
                 eval_err_num += 1
                 print(("eval_err_num:{}".format(eval_err_num)))
 
-            # rebuild sql for value evaluation
-            p_valid_col_units = build_valid_col_units(p_sql['from']['table_units'], schema)
-            p_sql = rebuild_sql_val(p_sql)
-            p_sql = rebuild_sql_col(p_valid_col_units, p_sql, kmap)
+                # rebuild sql for value evaluation
+                p_valid_col_units = build_valid_col_units(p_sql['from']['table_units'], schema)
+                p_sql = rebuild_sql_val(p_sql)
+                p_sql = rebuild_sql_col(p_valid_col_units, p_sql, kmap)
 
             if etype in ["all", "exec"]:
-                exec_score = eval_exec_match(db, p_str, g_str, p_sql, g_sql)
+                exec_score = eval_exec_match(db, p_str, g_str, p_sql, g_sql_copy)
                 exec_scores.append(exec_score)
 
             if etype in ["all", "match"]:
-                exact_scores.append(evaluator.eval_exact_match(p_sql, g_sql))
+                exact_scores.append(evaluator.eval_exact_match(p_sql, g_sql_copy))
                 partial_scores.append(evaluator.partial_scores)
 
         if etype in ["all", "exec"] and any(exec_scores):
@@ -712,6 +717,7 @@ def rebuild_cond_unit_val(cond_unit):
         return cond_unit
 
     not_op, op_id, val_unit, val1, val2 = cond_unit
+
     if type(val1) is not dict:
         val1 = None
     else:
