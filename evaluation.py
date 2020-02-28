@@ -477,7 +477,8 @@ def print_scores(scores, etype, file=sys.stdout):
             print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores), file=file)
 
 
-def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
+def evaluate(gold, predict, db_dir, etype, kmaps, 
+             savedir=None, make_paraphrases_data=False):
     with open(gold) as f:
         glist = []
         dblist = []
@@ -510,7 +511,6 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
     levels = ['easy', 'medium', 'hard', 'extra', 'all']
     partial_types = ['select', 'select(no AGG)', 'where', 'where(no OP)', 'group(no Having)',
                      'group', 'order', 'and/or', 'IUEN', 'keywords']
-    entries = []
     errors = []
     scores = {}
 
@@ -525,6 +525,8 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
         raise Exception('gold and prediction files have different length')
 
     eval_err_num = 0
+
+    paraphrase_data = []
 
     # group all with same question, gold, db
     # this automatically catches top k
@@ -606,7 +608,11 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
             index = exact_scores.index(max_exact_score)
             p_str = ps[index]
 
+            for pred, match in zip(ps, exact_scores):
+                paraphrase_data.append([ques, pred, match])
+
             if max_exact_score == 0:
+                paraphrase_data.append([ques, g_str, match])
                 print(("{} pred: {}".format(hardness,p_str)))
                 print(("{} gold: {}".format(hardness,g_str)))
                 print("")
@@ -639,13 +645,6 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
                     scores['all']['partial'][type_]['rec_count'] += 1
                 scores['all']['partial'][type_]['f1'] += partial_score[type_]['f1']
 
-            entries.append({
-                'predictSQL': p_str,
-                'goldSQL': g_str,
-                'hardness': hardness,
-                'exact': max_exact_score,
-                'partial': partial_score
-            })
 
     for level in levels:
         if scores[level]['count'] == 0:
@@ -682,6 +681,13 @@ def evaluate(gold, predict, db_dir, etype, kmaps, savedir=None):
         with open(f'{savedir}/spider-errors.json' , 'w') as f:
             json.dump(errors, f)
 
+        if make_paraphrases_data:
+            with open(f'{savedir}/paraphrase.txt', 'w') as f:
+                for nl_sql_match in paraphrase_data:
+                    f.write('\t'.join(nl_sql_match))
+                    f.write('\n')
+                
+                
 
 def eval_exec_match(db, p_str, g_str, pred, gold):
     """
@@ -924,6 +930,7 @@ if __name__ == "__main__":
     parser.add_argument('--output-dir', required=True, help='dir with gold, output and where to save eval')
     parser.add_argument('--data-dir', required=True, help='dir with tables.json, databases')
     parser.add_argument('--etype', choices=["all", "exec", "match"], default='match')
+    parser.add_argument('--make-paraphrase-data', action='store_true')
 
     args = parser.parse_args()
 
@@ -936,4 +943,4 @@ if __name__ == "__main__":
 
     kmaps = build_foreign_key_map_from_json(table)
 
-    evaluate(gold, pred, database, args.etype, kmaps, savedir)
+    evaluate(gold, pred, database, args.etype, kmaps, savedir, args.make_paraphrases_data)
