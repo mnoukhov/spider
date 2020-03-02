@@ -477,8 +477,8 @@ def print_scores(scores, etype, file=sys.stdout):
             print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores), file=file)
 
 
-def evaluate(gold, predict, db_dir, etype, kmaps, 
-             savedir=None, make_paraphrases_data=False):
+def evaluate(gold, predict, db_dir, etype, kmaps,
+             savedir=None, make_paraphrase_data=False):
     with open(gold) as f:
         glist = []
         dblist = []
@@ -681,13 +681,13 @@ def evaluate(gold, predict, db_dir, etype, kmaps,
         with open(f'{savedir}/spider-errors.json' , 'w') as f:
             json.dump(errors, f)
 
-        if make_paraphrases_data:
+        if make_paraphrase_data:
             with open(f'{savedir}/paraphrase.txt', 'w') as f:
                 for nl_sql_match in paraphrase_data:
                     f.write('\t'.join(nl_sql_match))
                     f.write('\n')
-                
-                
+
+
 
 def eval_exec_match(db, p_str, g_str, pred, gold):
     """
@@ -943,4 +943,4 @@ if __name__ == "__main__":
 
     kmaps = build_foreign_key_map_from_json(table)
 
-    evaluate(gold, pred, database, args.etype, kmaps, savedir, args.make_paraphrases_data)
+    evaluate(gold, pred, database, args.etype, kmaps, savedir, args.make_paraphrase_data)
