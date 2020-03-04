@@ -28,6 +28,8 @@ import argparse
 from itertools import groupby
 from operator import itemgetter
 
+from tqdm import tqdm
+
 from process_sql import tokenize, get_schema, get_tables_with_alias, Schema, get_sql
 
 # Flag to disable value evaluation
@@ -479,6 +481,10 @@ def print_scores(scores, etype, file=sys.stdout):
 
 def evaluate(gold, predict, db_dir, etype, kmaps,
              savedir=None, make_paraphrase_data=False):
+    unique = 0
+    prev_ques = None
+    prev_gold = None
+    prev_db = None
     with open(gold) as f:
         glist = []
         dblist = []
@@ -487,6 +493,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps,
             vals = line.strip().split('\t')
             if len(vals) == 1:
                 # empty row
+                print(f'gold file empty row {i}')
                 continue
             elif len(vals) == 2:
                 # og format
@@ -500,6 +507,14 @@ def evaluate(gold, predict, db_dir, etype, kmaps,
                 glist.append(gold)
                 dblist.append(db)
                 qlist.append(ques)
+            else:
+                raise Exception(f'line {i} has 4 or more elements {vals}')
+
+            if (prev_ques != ques or prev_gold != gold or prev_db != db):
+                unique += 1
+                prev_ques = ques
+                prev_gold = gold
+                prev_db = db
 
 
     with open(predict) as f:
@@ -530,8 +545,9 @@ def evaluate(gold, predict, db_dir, etype, kmaps,
 
     # group all with same question, gold, db
     # this automatically catches top k
-    for key, topk_group in groupby(zip(qlist, glist, dblist, plist),
-                                   key=itemgetter(0,1,2)):
+    for key, topk_group in tqdm(groupby(zip(qlist, glist, dblist, plist),
+                                        key=itemgetter(0,1,2)),
+                                total=unique):
         ques, g_str, db = key
         db_name = db
         db = os.path.join(db_dir, db, db + ".sqlite")
@@ -613,9 +629,9 @@ def evaluate(gold, predict, db_dir, etype, kmaps,
 
             if max_exact_score == 0:
                 paraphrase_data.append([ques, g_str, match])
-                print(("{} pred: {}".format(hardness,p_str)))
-                print(("{} gold: {}".format(hardness,g_str)))
-                print("")
+                # print(("{} pred: {}".format(hardness,p_str)))
+                # print(("{} gold: {}".format(hardness,g_str)))
+                # print("")
 
             errors.append({
                 'match': bool(max_exact_score),
@@ -684,8 +700,8 @@ def evaluate(gold, predict, db_dir, etype, kmaps,
         if make_paraphrase_data:
             with open(f'{savedir}/paraphrase.txt', 'w') as f:
                 for nl_sql_match in paraphrase_data:
-                    f.write('\t'.join(nl_sql_match))
-                    f.write('\n')
+                    nl, sql, match = nl_sql_match
+                    f.write(f'{nl}\t{sql}\t{match}\n')
 
 
 
